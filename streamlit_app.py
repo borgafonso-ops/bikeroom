@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import altair as alt # Moved import to the top for clarity and best practice
 from sklearn.datasets import load_iris
 
 # --- Configuration ---
@@ -29,7 +30,7 @@ st.markdown("""
 Welcome to a simple, ready-to-deploy Streamlit application! This app allows you to explore the classic Iris dataset 
 by filtering the data and visualizing feature distributions.
 """)
-[Image of a flower]
+
 # --- Sidebar for User Input ---
 st.sidebar.header("User Input Controls")
 
@@ -87,8 +88,6 @@ with col2:
         species_counts.columns = ['Species', 'Count']
         
         # Use Streamlit's built-in altair chart for a cleaner pie chart (using a simple donut approach)
-        import altair as alt
-
         base = alt.Chart(species_counts).encode(
             theta=alt.Theta("Count:Q", stack=True)
         )
