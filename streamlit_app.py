@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import random # <--- ADDED: Required for random.choice() in the load_data function
 
 # --- Configuration ---
 st.set_page_config(
