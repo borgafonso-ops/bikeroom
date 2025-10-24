@@ -1,101 +1,147 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import altair as alt # Moved import to the top for clarity and best practice
-from sklearn.datasets import load_iris
+import altair as alt
 
 # --- Configuration ---
-# Set the page configuration for a wide layout
 st.set_page_config(
-    page_title="Streamlit Data Explorer",
+    page_title="Bikeroom Sales Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- Data Loading (Cached for performance) ---
+# --- Data Generation Function (Mock Data) ---
 @st.cache_data
 def load_data():
-    """Loads the Iris dataset from scikit-learn."""
-    iris = load_iris()
-    df = pd.DataFrame(iris.data, columns=iris.feature_names)
-    df['species'] = iris.target_names[iris.target]
-    return df
+    """Generates mock bike sales and inventory data."""
+    num_rows = 1000
+    
+    # Define data fields
+    models = ['Speedster 3000', 'Trail King Pro', 'City Commuter E-3', 'Gravel Explorer', 'Aero Blade Race']
+    categories = ['Road', 'Mountain', 'City', 'Electric', 'BMX']
+    regions = ['North America', 'Europe', 'Asia', 'Oceania']
+    
+    data = {
+        'Bike_Model': [np.random.choice(models, p=[0.25, 0.20, 0.30, 0.15, 0.10]) for _ in range(num_rows)],
+        'Category': [random.choice(categories) for _ in range(num_rows)],
+        'Price_USD': np.round(np.random.normal(loc=1800, scale=700, size=num_rows), -1).clip(500, 6000),
+        'Units_Sold': np.random.randint(1, 50, num_rows),
+        'Region': [random.choice(regions) for _ in range(num_rows)],
+        'Date': pd.to_datetime('2024-01-01') + pd.to_timedelta(np.random.randint(0, 365, num_rows), unit='D')
+    }
+    
+    df = pd.DataFrame(data)
+    df['Total_Sales_USD'] = df['Price_USD'] * df['Units_Sold']
+    
+    # Aggregate sales data by model and region for cleaner visualization
+    aggregated_df = df.groupby(['Bike_Model', 'Category', 'Region']).agg(
+        Total_Units=('Units_Sold', 'sum'),
+        Total_Revenue=('Total_Sales_USD', 'sum')
+    ).reset_index()
+    
+    return aggregated_df
 
-iris_df = load_data()
+bike_sales_df = load_data()
 
 # --- Title and Introduction ---
-st.title("🌱 Streamlit Data Explorer: Iris Dataset")
-
+st.title("🚲 Bikeroom Sales Dashboard")
 st.markdown("""
-Welcome to a simple, ready-to-deploy Streamlit application! This app allows you to explore the classic Iris dataset 
-by filtering the data and visualizing feature distributions.
+A ready-to-deploy Streamlit application demonstrating sales analysis on mock bicycle data. 
+Use the sidebar filters to explore revenue and unit sales by category and region.
 """)
 
-# --- Sidebar for User Input ---
-st.sidebar.header("User Input Controls")
 
-# Create a slider to filter data based on Sepal Length
-sepal_length_min = st.sidebar.slider(
-    'Minimum Sepal Length (cm)',
-    float(iris_df['sepal length (cm)'].min()),
-    float(iris_df['sepal length (cm)'].max()),
-    float(iris_df['sepal length (cm)'].min()) + 1.0  # Set a default value slightly higher than min
+# --- Sidebar for User Input ---
+st.sidebar.header("Filter Sales Data")
+
+# Filter 1: Category Multiselect
+selected_categories = st.sidebar.multiselect(
+    'Select Bike Category',
+    options=bike_sales_df['Category'].unique(),
+    default=bike_sales_df['Category'].unique()
 )
 
-# Create a multiselect for species filtering
-selected_species = st.sidebar.multiselect(
-    'Select Species to Display',
-    options=iris_df['species'].unique(),
-    default=iris_df['species'].unique()
+# Filter 2: Price Slider (using Total Revenue as a proxy for value filtering)
+min_revenue = st.sidebar.slider(
+    'Minimum Total Revenue ($)',
+    float(bike_sales_df['Total_Revenue'].min()),
+    float(bike_sales_df['Total_Revenue'].max()),
+    float(bike_sales_df['Total_Revenue'].min())
 )
 
 # --- Data Filtering ---
-filtered_df = iris_df[
-    (iris_df['sepal length (cm)'] >= sepal_length_min) &
-    (iris_df['species'].isin(selected_species))
+filtered_df = bike_sales_df[
+    (bike_sales_df['Category'].isin(selected_categories)) &
+    (bike_sales_df['Total_Revenue'] >= min_revenue)
 ]
 
 # --- Main Content Layout ---
-st.header("Filtered Data View")
-st.markdown(f"**Showing {len(filtered_df)} of {len(iris_df)} records** based on your selections.")
 
-# Display the filtered data table
-st.dataframe(filtered_df, use_container_width=True)
+# 1. KPIs
+total_revenue = filtered_df['Total_Revenue'].sum()
+total_units = filtered_df['Total_Units'].sum()
+
+st.subheader("Key Performance Indicators (KPIs)")
+col_kpi_1, col_kpi_2, col_kpi_3 = st.columns(3)
+
+col_kpi_1.metric(
+    "Total Filtered Revenue", 
+    f"${total_revenue:,.0f}",
+    delta=f"Showing {len(filtered_df)} data points"
+)
+col_kpi_2.metric(
+    "Total Units Sold", 
+    f"{total_units:,.0f}"
+)
+col_kpi_3.metric(
+    "Average Price per Unit", 
+    f"${total_revenue / (total_units or 1):,.2f}"
+)
+
+st.markdown("---")
 
 
-# --- Visualization ---
-st.header("Feature Visualization")
+# 2. Visualizations
+st.header("Sales Distribution")
 
-# Use two columns for better layout
-col1, col2 = st.columns(2)
+col_viz_1, col_viz_2 = st.columns(2)
 
-with col1:
-    st.subheader("Distribution of Petal Width")
+with col_viz_1:
+    st.subheader("Total Units Sold by Bike Category")
     
-    # Check if there is data to plot
     if not filtered_df.empty:
-        # Create a histogram using Streamlit's built-in chart capabilities
-        st.bar_chart(filtered_df['petal width (cm)'].value_counts().sort_index())
-    else:
-        st.warning("No data matches the current filter criteria.")
-
-with col2:
-    st.subheader("Species Count")
-    
-    if not filtered_df.empty:
-        # Pie chart showing the distribution of the remaining species
-        species_counts = filtered_df['species'].value_counts().reset_index()
-        species_counts.columns = ['Species', 'Count']
+        units_by_category = filtered_df.groupby('Category')['Total_Units'].sum().reset_index()
         
-        # Use Streamlit's built-in altair chart for a cleaner pie chart (using a simple donut approach)
-        base = alt.Chart(species_counts).encode(
-            theta=alt.Theta("Count:Q", stack=True)
-        )
+        # Altair Bar Chart
+        chart_units = alt.Chart(units_by_category).mark_bar().encode(
+            x=alt.X('Category', sort='-y'),
+            y=alt.Y('Total_Units'),
+            tooltip=['Category', 'Total_Units']
+        ).properties(
+            height=300
+        ).interactive()
+        
+        st.altair_chart(chart_units, use_container_width=True)
+    else:
+        st.warning("No data matches the current filter criteria for charting.")
 
+with col_viz_2:
+    st.subheader("Revenue Distribution by Region")
+    
+    if not filtered_df.empty:
+        revenue_by_region = filtered_df.groupby('Region')['Total_Revenue'].sum().reset_index()
+        
+        # Altair Pie/Donut Chart for Revenue Share
+        base = alt.Chart(revenue_by_region).encode(
+            theta=alt.Theta("Total_Revenue:Q", stack=True)
+        )
+        
         pie = base.mark_arc(outerRadius=120, innerRadius=50).encode(
-            color=alt.Color("Species:N"),
-            order=alt.Order("Count:Q", sort="descending"),
-            tooltip=["Species", "Count"]
+            color=alt.Color("Region:N"),
+            order=alt.Order("Total_Revenue:Q", sort="descending"),
+            tooltip=["Region", alt.Tooltip('Total_Revenue', format='$,.0f')]
+        ).properties(
+            title='Revenue Share by Region'
         )
         
         st.altair_chart(pie, use_container_width=True)
@@ -103,13 +149,18 @@ with col2:
         st.warning("No data to display in the chart.")
 
 
+# 3. Detailed Data Table
+st.header("Detailed Sales Records")
+st.markdown(f"**Showing {len(filtered_df)} records** (aggregated by Model, Category, and Region).")
+st.dataframe(filtered_df, use_container_width=True)
+
+
 # --- Deployment Instructions Footer ---
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
-    **Deployment Steps:**
-    1. Commit these two files (`streamlit_app.py` and `requirements.txt`) to a new GitHub repository.
-    2. Go to [Streamlit Cloud](https://share.streamlit.io/).
-    3. Click "New app" and point it to your GitHub repository and the file path (`streamlit_app.py`).
+    ### Deployment Status: Ready!
+    1. **Commit** the new `streamlit_app.py` and `requirements.txt` to your GitHub repo.
+    2. **Deploy** on [Streamlit Cloud](https://share.streamlit.io/).
     """
 )
